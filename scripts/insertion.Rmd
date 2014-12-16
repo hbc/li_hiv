@@ -1,0 +1,110 @@
+fn = "~/tmp/li_hiv/ACH2-clone1.table"
+t = read.table(fn, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+
+dim(t)
+
+library(dplyr)
+library(ggplot2)
+
+Some chimeric reads are duplicates; they have the same mapping position on both the
+host chromosome and the virus. 
+
+
+```{r duplicates-exist}
+duplicates = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% summarise(count=n())
+ggplot(duplicates, aes(count)) + geom_histogram() + xlab("number of duplicates") +
+    ylab("number of reads with this many duplicates") +
+  theme_bw(base_size=12, base_family="Gill Sans") + 
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+We can de-deuplicate these by grouping by mapping position and choosing the distinct reads:
+
+```{r de-duplicate}
+deduped = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% distinct()
+```
+
+sites = deduped %>% group_by(chrom, pos, end) %>% summarise(count=n())
+start_sites = sites %>% group_by(chrom, pos) %>% summarise(count=n())
+end_sites = sites %>% group_by(chrom, end) %>% summarise(count=n())
+colnames(end_sites) = c("chrom", "pos", "count")
+site_counts = rbind(start_sites, end_sites)
+site_counts = subset(site_counts, chrom != "subtype_b")
+ggplot(site_counts, aes(count)) + geom_histogram() +
+  ylab("unique reads supporting the site") +
+  theme_bw(base_size=12, base_family="Gill Sans") + 
+      theme(panel.grid.major = element_line(size = .5, color = "grey"))
+subset(site_counts, count > 10)
+
+
+fn = "~/tmp/li_hiv/ACH2-clone3.table"
+t = read.table(fn, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+
+dim(t)
+
+library(dplyr)
+library(ggplot2)
+
+Some chimeric reads are duplicates; they have the same mapping position on both the
+host chromosome and the virus. 
+
+
+```{r duplicates-exist}
+duplicates = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% summarise(count=n())
+ggplot(duplicates, aes(count)) + geom_histogram() + xlab("number of duplicates") +
+    ylab("number of reads with this many duplicates") +
+  theme_bw(base_size=12, base_family="Gill Sans") + 
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+We can de-deuplicate these by grouping by mapping position and choosing the distinct reads:
+
+```{r de-duplicate}
+deduped = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% distinct()
+```
+
+sites = deduped %>% group_by(chrom, pos, end) %>% summarise(count=n())
+start_sites = sites %>% group_by(chrom, pos) %>% summarise(count=n())
+end_sites = sites %>% group_by(chrom, end) %>% summarise(count=n())
+colnames(end_sites) = c("chrom", "pos", "count")
+site_counts = rbind(start_sites, end_sites)
+site_counts = subset(site_counts, chrom != "subtype_b")
+ggplot(site_counts, aes(count)) + geom_histogram() +
+  ylab("unique reads supporting the site") +
+  theme_bw(base_size=12, base_family="Gill Sans") + 
+      theme(panel.grid.major = element_line(size = .5, color = "grey"))
+subset(site_counts, counts > 10)
+
+
+fn = "~/tmp/li_hiv/818703-2006.table"
+t = read.table(fn, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+
+dim(t)
+
+library(dplyr)
+library(ggplot2)
+
+Some chimeric reads are duplicates; they have the same mapping position on both the
+host chromosome and the virus. 
+
+
+```{r duplicates-exist}
+duplicates = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% summarise(count=n())
+ggplot(duplicates, aes(count)) + geom_histogram() + xlab("number of duplicates") +
+    ylab("number of reads with this many duplicates") +
+  theme_bw(base_size=12, base_family="Gill Sans") + 
+  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+```
+
+We can de-deuplicate these by grouping by mapping position and choosing the distinct reads:
+
+```{r de-duplicate}
+deduped = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% distinct()
+```
+
+sites = deduped %>% group_by(chrom, pos, end) %>% summarise(count=n())
+start_sites = sites %>% group_by(chrom, pos) %>% summarise(count=n())
+end_sites = sites %>% group_by(chrom, end) %>% summarise(count=n())
+colnames(end_sites) = c("chrom", "pos", "count")
+site_counts = rbind(start_sites, end_sites)
+site_counts = subset(site_counts, chrom != "subtype_b")
