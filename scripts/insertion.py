@@ -98,6 +98,8 @@ if __name__ == "__main__":
                 continue
             if not is_chimera(read, contig, args.virus_contig):
                 continue
+            if read.is_duplicate:
+                continue
             rid = read.qname
             first = read.is_read1
             chrom = in_handle.getrname(read.tid)
