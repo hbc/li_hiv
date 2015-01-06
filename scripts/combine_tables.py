@@ -8,13 +8,6 @@ import pandas as pd
 import os
 import fnmatch
 
-
-test_fn = "/Users/rory/cache/li_hiv/align/09-2014/ACH2-clone1_S2_L001.table"
-t = pd.DataFrame.from_csv(test_fn, sep="\t")
-
-test_empty = "/Users/rory/cache/li_hiv/align/09-2014/AC065-2006_S1_L001.table"
-empty = pd.DataFrame.from_csv(test_empty, sep="\t")
-
 def read_dataframe(fn):
     date = os.path.basename(os.path.dirname(fn))
     sample = os.path.basename(fn).split("_")[0]
@@ -35,7 +28,7 @@ def read_and_combine_dataframes(fns):
 def find_tables(base_dir):
     matches = []
     for root, dirnames, filenames in os.walk(base_dir):
-      for filename in fnmatch.filter(filenames, '*.table'):
+      for filename in fnmatch.filter(filenames, '*.deduped.table'):
           matches.append(os.path.join(root, filename))
     return matches
 
