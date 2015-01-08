@@ -1,110 +1,178 @@
-fn = "~/tmp/li_hiv/ACH2-clone1.table"
-t = read.table(fn, header=TRUE, sep="\t", stringsAsFactors=FALSE)
+# simpler method
+Instead of the complicated method we were doing before, trying to match the LTR sequences
+with an adapter trimmer, tagging the reads with the sequences and then looking at their
+endpoints, instead we align the reads to an augmented human genome with the HIV subtype_b
+sequence. Then we search for chimeric reads, that are reads with one end on a chromosome
+in the human and the other end in the subtype_b sequence, and find the end points of those
+reads.
 
-dim(t)
+We ran this on the older files by aligning them with bwa-mem and then using the
+insertion.py script to search for chimeric reads with one of the ends being in the
+subtype_b sequence. This seems to have worked great for some of the samples, here
+is an example from the ACH2 sample from the 10-2014 run.
 
+![ACH2, clone 1, 10-2014 run](http://dl.dropbox.com/u/2822886/Screenshots/r_z0ofp8njx9.png)
+
+The chimeric reads map to both ends of the subtype_b sequence and the other end of the
+chimeric reads are at what looks like an insertion site at chr7:33059398.
+
+![ACH2, clone1, 10-2014 run](http://dl.dropbox.com/u/2822886/Screenshots/6upgy7j-6sdw.png)
+
+Looking at AC06-2006 from the 10-2014 run, we see a similar preference for alignment to
+the ends of subtype_b:
+    
+![AC06-2006](http://dl.dropbox.com/u/2822886/Screenshots/5j-jxwwzam_a.png) 
+
+but there are not a lot of reads supporting the insertion site.
+
+![AC06-2006](http://dl.dropbox.com/u/2822886/Screenshots/67ajnt~m2hci.png)
+
+Some of the chimeric reads in the table are likely duplicates; they have the same mapping
+position on both the human chromosome and the virus, we can de-duplicate those by grouping
+by mapping position and sample and choosing distinct reads. We can see that for
+the patient samples there are a very small number of chimeric reads.
+
+```{r duplicates, warning=FALSE, message=FALSE}
+library(extrafont)
 library(dplyr)
 library(ggplot2)
+t = read.table("/Users/rory/cache/li_hiv/align/chimeric.tables", sep="\t", stringsAsFactors=FALSE,
+               header=TRUE)
+t = t %>% filter(sample != "Undetermined" | chrom != "subtype_b")
 
-Some chimeric reads are duplicates; they have the same mapping position on both the
-host chromosome and the virus. 
+start_pos = t %>% group_by(chrom, pos, strand, sample, date) %>% summarise(count=n())
+end_pos = t %>% group_by(chrom, end, strand, sample, date) %>% summarise(count=n())
+colnames(end_pos) = c("chrom", "pos", "strand", "sample", "date", "count")
+combined = rbind(start_pos, end_pos)
+combined = combined %>% group_by(chrom, pos, sample, date) %>% summarise(count=sum(count))
+combined = subset(combined, chrom != "subtype_b")
 
+data.frame(subset(combined, count > 10))
+ggplot(combined, aes(count)) + geom_histogram() + xlab("alignments of evidence") +
+    ylab("integration sites") +
+    scale_y_sqrt() + scale_x_sqrt() +
+    facet_wrap(c("sample", "date")) +
+  theme_bw(base_size=8, base_family="Gill Sans") +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+        axis.text.x = element_text(angle = 90))
 
-```{r duplicates-exist}
-duplicates = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% summarise(count=n())
+duplicates = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end, sample, date) %>%
+  summarise(count=n())
 ggplot(duplicates, aes(count)) + geom_histogram() + xlab("number of duplicates") +
     ylab("number of reads with this many duplicates") +
-  theme_bw(base_size=12, base_family="Gill Sans") + 
-  theme(panel.grid.major = element_line(size = .5, color = "grey"))
+    scale_y_sqrt() + scale_x_sqrt() +
+    facet_wrap(c("sample", "date")) +
+  theme_bw(base_size=8, base_family="Gill Sans") +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+        axis.text.x = element_text(angle = 90))
 ```
 
-We can de-deuplicate these by grouping by mapping position and choosing the distinct reads:
-
-```{r de-duplicate}
-deduped = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% distinct()
-```
-
-sites = deduped %>% group_by(chrom, pos, end) %>% summarise(count=n())
-start_sites = sites %>% group_by(chrom, pos) %>% summarise(count=n())
-end_sites = sites %>% group_by(chrom, end) %>% summarise(count=n())
-colnames(end_sites) = c("chrom", "pos", "count")
-site_counts = rbind(start_sites, end_sites)
-site_counts = subset(site_counts, chrom != "subtype_b")
-ggplot(site_counts, aes(count)) + geom_histogram() +
-  ylab("unique reads supporting the site") +
-  theme_bw(base_size=12, base_family="Gill Sans") + 
-      theme(panel.grid.major = element_line(size = .5, color = "grey"))
-subset(site_counts, count > 10)
-
-
-fn = "~/tmp/li_hiv/ACH2-clone3.table"
-t = read.table(fn, header=TRUE, sep="\t", stringsAsFactors=FALSE)
-
-dim(t)
-
-library(dplyr)
-library(ggplot2)
-
-Some chimeric reads are duplicates; they have the same mapping position on both the
-host chromosome and the virus. 
-
-
-```{r duplicates-exist}
-duplicates = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% summarise(count=n())
-ggplot(duplicates, aes(count)) + geom_histogram() + xlab("number of duplicates") +
+same_start = t %>% group_by(chrom, pos, sample, date) %>% summarise(count=n())
+ggplot(same_start, aes(count)) + geom_histogram() + xlab("number of duplicates") +
     ylab("number of reads with this many duplicates") +
-  theme_bw(base_size=12, base_family="Gill Sans") + 
-  theme(panel.grid.major = element_line(size = .5, color = "grey"))
-```
+    scale_y_sqrt() + scale_x_sqrt() +
+    facet_wrap(c("sample", "date")) +
+  theme_bw(base_size=8, base_family="Gill Sans") +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle = 90))
 
-We can de-deuplicate these by grouping by mapping position and choosing the distinct reads:
-
-```{r de-duplicate}
-deduped = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% distinct()
-```
-
-sites = deduped %>% group_by(chrom, pos, end) %>% summarise(count=n())
-start_sites = sites %>% group_by(chrom, pos) %>% summarise(count=n())
-end_sites = sites %>% group_by(chrom, end) %>% summarise(count=n())
-colnames(end_sites) = c("chrom", "pos", "count")
-site_counts = rbind(start_sites, end_sites)
-site_counts = subset(site_counts, chrom != "subtype_b")
-ggplot(site_counts, aes(count)) + geom_histogram() +
-  ylab("unique reads supporting the site") +
-  theme_bw(base_size=12, base_family="Gill Sans") + 
-      theme(panel.grid.major = element_line(size = .5, color = "grey"))
-subset(site_counts, counts > 10)
-
-
-fn = "~/tmp/li_hiv/818703-2006.table"
-t = read.table(fn, header=TRUE, sep="\t", stringsAsFactors=FALSE)
-
-dim(t)
-
-library(dplyr)
-library(ggplot2)
-
-Some chimeric reads are duplicates; they have the same mapping position on both the
-host chromosome and the virus. 
-
-
-```{r duplicates-exist}
-duplicates = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% summarise(count=n())
-ggplot(duplicates, aes(count)) + geom_histogram() + xlab("number of duplicates") +
+same_end = t %>% group_by(chrom, end, sample, date) %>% summarise(count=n())
+ggplot(same_end, aes(count)) + geom_histogram() + xlab("number of duplicates") +
     ylab("number of reads with this many duplicates") +
-  theme_bw(base_size=12, base_family="Gill Sans") + 
-  theme(panel.grid.major = element_line(size = .5, color = "grey"))
-```
+    scale_y_sqrt() + scale_x_sqrt() +
+    facet_wrap(c("sample", "date")) +
+  theme_bw(base_size=8, base_family="Gill Sans") +
+    theme(panel.grid.major = element_line(size = .5, color = "grey"),
+          axis.text.x = element_text(angle = 90))
 
-We can de-deuplicate these by grouping by mapping position and choosing the distinct reads:
 
-```{r de-duplicate}
-deduped = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end) %>% distinct()
-```
+Here we collapse down the alignments for each sample by the start and
+end site and group all of the sites where either the start or end is
+the same into support for the insertion site. The majority of
+insertion sites detected this way have
+only a small number of reads of support. For the cell lines, there are some insertion sites
+with a larger amount of unique read support. 
 
-sites = deduped %>% group_by(chrom, pos, end) %>% summarise(count=n())
-start_sites = sites %>% group_by(chrom, pos) %>% summarise(count=n())
-end_sites = sites %>% group_by(chrom, end) %>% summarise(count=n())
-colnames(end_sites) = c("chrom", "pos", "count")
+```{r deduped, warning=FALSE, message=FALSE}
+deduped = t %>% group_by(chrom, pos, end, SA_chrom, SA_pos, SA_end, sample, date) %>% distinct()
+sites = deduped %>% group_by(chrom, pos, end, sample, date) %>% summarise(count=n())
+start_sites = sites %>% group_by(chrom, pos, sample, date) %>% summarise(total=sum(count))
+end_sites = sites %>% group_by(chrom, end, sample, date) %>% summarise(total=sum(count))
+colnames(end_sites) = c("chrom", "pos", "sample", "date", "total")
 site_counts = rbind(start_sites, end_sites)
 site_counts = subset(site_counts, chrom != "subtype_b")
+site_totals = site_counts %>% group_by(chrom, pos, sample, date) %>% summarize(total=sum(total))
+ggplot(site_totals, aes(total)) + geom_histogram() +
+  scale_x_sqrt() + scale_y_sqrt() +
+  facet_wrap(c("sample", "date")) +
+  xlab("unique reads supporting the site") +
+  ylab("number of sites") +
+  theme_bw(base_size=8, base_family="Gill Sans") +
+      theme(panel.grid.major = element_line(size = .5, color = "grey"),
+            axis.text.x = element_text(angle = 90))
+```
+
+The ACH2 samples seem to have reproducible insertion sites. We can detect in the 09-2014 and
+the 10-2014 samples the chr7 33059398 site that we detected in the 06-2014 samples. We can
+detect a few possible unique sites in the ACH2 clones we weren't picking up before as well. It
+would be good to validate some of these:
+
+```{r high-count-insertion-sites}
+subset(site_counts, total > 10)
+```
+
+Removing the duplicates is important; some sites look like a legitimate insertion site
+just considering the end point of the read but inspecting the reads mapping to the site,
+it looks more like a PCR artifact. Below is an example of a site with hundreds of reads of support, but they are all identical in one of the BCL-2 samples.
+
+![duplicate stacking, BCL2](http://dl.dropbox.com/u/2822886/Screenshots/ol~13j1wzcjm.png)
+
+Unfortunately, for other samples, even cell lines like BCL2, we aren't seeing the same
+outlier sites.
+
+subset(site_counts, sample == "BCL-2-6-18" & date == "10-2014" & count > 1)
+
+Other things we can do with this data, you can see from the reads aligning to the HIV sequences,
+that we could call variants with this data in the LTR sequence:
+
+![3' LTR of subtype_b](http://dl.dropbox.com/u/2822886/Screenshots/scbm99rch-gi.png)
+
+We can do better than we are doing, we are missing some insertion sites with this algorithm,
+it looks like:
+
+![BCL-2-insertion](http://dl.dropbox.com/u/2822886/Screenshots/8ykwzisuowx~.png)
+
+Do these not have chimeric reads in subtype_b? They do, if we look at where the mates are,
+they are in subtype_b:
+
+![BCL-2-insertion-subtype-b](http://dl.dropbox.com/u/2822886/Screenshots/jh4cfbr4ry4a.png)
+
+bcl2_sites = subset(site_counts, sample == "BCL-2-6-18" & date == "10-2014")
+bcl2_bed = bcl2_sites[,c("chrom", "pos", "pos", "count")]
+bcl2_bed = bcl2_bed[order(bcl2_bed$chrom, bcl2_bed$pos),]
+write.table(bcl2_bed, file="BCL-2-6-18_10-2014.bed", col.names=FALSE, sep="\t",
+  row.names=FALSE, quote=FALSE)
+
+The ACH2 samples are the only ones that look great. The other cell lines have many reads
+mapping to subtype_b but there are not a lot of non-duplicated alignments of evidence
+for individual insertion sites.
+
+![patient-samples low HIV](http://dl.dropbox.com/u/2822886/Screenshots/kur_sdlyrx~r.png)
+
+Mark duplicates on these when aligning.
+
+![bcl-2 site possibly an artifact](http://dl.dropbox.com/u/2822886/Screenshots/mhjmh-2uoyyv.png)
+
+    
+hm = t %>% group_by(chrom, pos, sample, date) %>% summarise(count=n())
+start_stats = hm %>% group_by(sample, date) %>% summarise(sd=sd(count), mean=mean(count))
+
+hm = t %>% group_by(chrom, end, sample, date) %>% summarise(count=n())
+end_stats = hm %>% group_by(sample, date) %>% summarise(sd=sd(count), mean=mean(count))
+
+same_starts = t %>% filter(chrom != "subtype_b") %>% group_by(chrom, pos, sample, date) %>%
+  summarise(count=n()) %>% group_by(sample, date) %>% filter(count > (mean(count) + sd(count))) 
+
+same_ends = t %>% filter(chrom != "subtype_b") %>% group_by(chrom, end, sample, date) %>%
+  summarise(count=n()) %>% group_by(sample, date) %>% filter(count > (mean(count) + 2 * sd(count))) 
+stats = hm %>% group_by(sample, date) %>% summarise(sd=sd(count), mean=mean(count))
