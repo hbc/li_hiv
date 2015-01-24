@@ -105,32 +105,36 @@ def make_hiv_feature_function(bed_file):
     def hiv_overlap(chrom, pos):
         region = bedtools.BedTool("%s %s %s" % (chrom, pos, pos), from_string=True)
         overlap = region.intersect(bed, wao=True)
-        features = [x.fields[6] for x in overlap if x.fields[6] != "."]
+        features = set([x.fields[6] for x in overlap if x.fields[6] != "."])
         return ",".join(features)
     return hiv_overlap
 
-if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument("--virus-bed", help="BED file of viral features.")
-    parser.add_argument("bamfile", help="BAM file to call insertion sites from")
-    parser.add_argument("virus_contig", help="Name of virus contig")
-    args = parser.parse_args()
+def make_genomic_feature_function(bed_file):
+    """
+    Create a function that takes a chromosome and position and returns all
+    overlapping subfeatures from the genomic feature BED file.
 
-    HEADER = "\t".join(["rid", "first", "chrom", "pos", "end", "strand", "mapq",
-                        "SA_chrom", "SA_pos", "SA_end", "SA_strand",
-                        "SA_mapq", "SA_nm",
-                        "as", "xs", "clipped", "insertions", "deletions",
-                        "matched", "clipped_front"])
-    FORMAT = ("{rid}\t{first}\t{chrom}\t{pos}\t{end}\t{strand}\t{mapq}\t{SA_chrom}\t"
-              "{SA_pos}\t{SA_end}\t{SA_strand}\t{SA_mapq}\t{SA_nm}\t{AS}\t{XS}\t{clipped}\t"
-              "{insertions}\t{deletions}\t{matched}\t{clipped_front}")
+    The BED file must be formatted like this:
+    subtype_b       1       634     5-ltr
 
-    chimeric_fn = os.path.splitext(args.bamfile)[0] + ".chimeric.bam"
+    calling the returned function with foo("subtype_b", 200) will return 5-ltr
+    """
+    bed = bedtools.BedTool(bed_file)
+    def overlap_fn(chrom, pos):
+        region = bedtools.BedTool("%s %s %s" % (chrom, pos, pos), from_string=True)
+        overlap = region.intersect(bed, wao=True)
+        symbols = set([x.fields[6] for x in overlap if x.fields[6] != "."])
+        features = set([x.fields[7] for x in overlap if x.fields[7] != "-1"])
+        return [",".join(features), ",".join(symbols)]
+    return overlap_fn
 
+def keep_chimeric_reads(bamfile, virus_contig):
+    chimeric_file = os.path.splitext(args.bamfile)[0] + ".chimeric.bam"
+    if os.path.exists(chimeric_file):
+        return chimeric_file
     with pysam.Samfile(args.bamfile, "rb") as in_handle, \
-         pysam.Samfile(chimeric_fn, "wb", template=in_handle) as out_handle:
+         pysam.Samfile(chimeric_file, "wb", template=in_handle) as out_handle:
         contig = in_handle.gettid(args.virus_contig)
-        print HEADER
         for read in in_handle:
             if skip_read(read, contig, args.virus_contig, in_handle):
                 continue
@@ -138,6 +142,60 @@ if __name__ == "__main__":
             if chrom == args.virus_contig:
                 continue
             out_handle.write(read)
+    return chimeric_file
+
+def get_virus_coordinates(read, in_handle, virus_contig):
+    chrom == in_handle.getrname(read.tid)
+    if chrom == virus_contig:
+        return [chrom, pos]
+    SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm = get_SA_items(read)
+    if SA_chrom == virus_contig:
+        return [SA_chrom, SA_pos]
+
+def get_human_coordinates(read, in_handle, virus_contig):
+    chrom == in_handle.getrname(read.tid)
+    if chrom != virus_contig:
+        return [chrom, pos]
+    SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm = get_SA_items(read)
+    if SA_chrom != virus_contig:
+        return [SA_chrom, SA_pos]
+
+if __name__ == "__main__":
+    parser = ArgumentParser()
+    parser.add_argument("--human-bed", help="BED file of human features")
+    parser.add_argument("--virus-bed", help="BED file of viral features")
+    parser.add_argument("bamfile", help="BAM file to call insertion sites from")
+    parser.add_argument("virus_contig", help="Name of virus contig")
+    args = parser.parse_args()
+    HEADER_FIELDS = ["rid", "first", "chrom", "pos", "end", "strand", "mapq",
+                     "SA_chrom", "SA_pos", "SA_end", "SA_strand",
+                     "SA_mapq", "SA_nm",
+                     "as", "xs", "clipped", "insertions", "deletions",
+                     "matched", "clipped_front"]
+    FORMAT = ("{rid}\t{first}\t{chrom}\t{pos}\t{end}\t{strand}\t{mapq}\t{SA_chrom}\t"
+              "{SA_pos}\t{SA_end}\t{SA_strand}\t{SA_mapq}\t{SA_nm}\t{AS}\t{XS}\t{clipped}\t"
+              "{insertions}\t{deletions}\t{matched}\t{clipped_front}")
+
+    chimeric_file = keep_chimeric_reads(args.bamfile, args.virus_contig)
+
+    if args.virus_bed:
+        FORMAT += "\t{virus_feature}"
+        HEADER_FIELDS += ["virus_feature"]
+    if args.human_bed:
+        FORMAT += "\t{symbol}\t{feature}"
+        HEADER_FIELDS += ["symbol", "feature"]
+        hiv_feature = make_hiv_feature_function(args.virus_bed)
+
+    if args.human_bed:
+        human_feature = make_genomic_feature_function(args.human_bed)
+
+    HEADER = "\t".join(HEADER_FIELDS)
+
+    with pysam.Samfile(chimeric_file, "rb") as in_handle:
+        contig = in_handle.gettid(args.virus_contig)
+        print HEADER
+        for read in in_handle:
+            chrom = in_handle.getrname(read.tid)
             rid = read.qname
             first = read.is_read1
             strand = "-" if read.is_reverse else "+"
@@ -153,4 +211,8 @@ if __name__ == "__main__":
             deletions = cigar["deletions"]
             matched = cigar["matched"]
             clipped_front = cigar["clipped_front"]
+            if args.virus_bed:
+                virus_feature = hiv_feature(*get_virus_coordinates(read, in_handle, args.virus_contig))
+            if args.human_bed:
+                symbol, feature = human_feature(*get_human_coordinates(read, in_handle, args.virus_contig))
             print FORMAT.format(**locals())
