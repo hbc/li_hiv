@@ -124,6 +124,7 @@ def make_genomic_feature_function(bed_file):
         region = bedtools.BedTool("%s %s %s" % (chrom, pos, pos), from_string=True)
         overlap = region.intersect(bed, wao=True)
         symbols = set([x.fields[6] for x in overlap if x.fields[6] != "."])
+        symbols = [x for x in symbols if x != "NA"]
         features = set([x.fields[7] for x in overlap if x.fields[7] != "-1"])
         return [",".join(features), ",".join(symbols)]
     return overlap_fn
@@ -139,8 +140,6 @@ def keep_chimeric_reads(bamfile, virus_contig):
             if skip_read(read, contig, args.virus_contig, in_handle):
                 continue
             chrom = in_handle.getrname(read.tid)
-            if chrom == args.virus_contig:
-                continue
             out_handle.write(read)
     return chimeric_file
 
@@ -162,6 +161,8 @@ def get_human_coordinates(read, in_handle, virus_contig):
 
 if __name__ == "__main__":
     parser = ArgumentParser()
+    parser.add_argument("--reassign-from", default=None, help="")
+    parser.add_argument("--reassign-to", default=None, help="")
     parser.add_argument("--human-bed", help="BED file of human features")
     parser.add_argument("--virus-bed", help="BED file of viral features")
     parser.add_argument("bamfile", help="BAM file to call insertion sites from")
