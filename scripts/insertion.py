@@ -7,9 +7,30 @@ import os
 import pysam
 import pybedtools as bedtools
 import re
+import toolz as tz
 from argparse import ArgumentParser
 
 SUPPLEMENTARY_FLAG = 2048
+CIGAR_OTHER = 0
+CIGAR_SOFT_CLIPPED = 4
+CIGAR_HARD_CLIPPED = 5
+
+def convert_cigar_char(char):
+    if char == "S":
+        return CIGAR_SOFT_CLIPPED
+    elif char == "H":
+        return CIGAR_HARD_CLIPPED
+    else:
+        return CIGAR_OTHER
+
+def get_SA_cigar(read):
+    SA = [x for x in read.tags if x[0] == 'SA']
+    SA = SA[0] if SA else None
+    items = SA[1].split(",")
+    cigar = items[3]
+    bases = [x for x in re.compile("([A-Z])").split(cigar) if x]
+    tuples = [(convert_cigar_char(x[1]), x[0]) for x in tz.partition(2, bases)]
+    return tuples
 
 def is_supplementary(read):
     return read.flag > SUPPLEMENTARY_FLAG
@@ -25,13 +46,13 @@ def get_SA_items(read):
     SA = SA[0] if SA else None
     items = SA[1].split(",")
     chrom = items[0]
-    pos = items[1]
+    pos = int(items[1]) - 1
     strand = items[2]
     cigar = items[3]
     bases = [int(x) for x in re.compile("[A-Z]").split(cigar) if x]
     sa_mapq = items[4].split(";")[0]
     nm = items[5].split(";")[0]
-    return chrom, pos, int(pos) + sum(bases), strand, sa_mapq, nm
+    return chrom, pos, pos + sum(bases), strand, sa_mapq, nm, cigar
 
 def get_SA_tag(read):
     SA = [x for x in read.tags if x[0] == 'SA']
@@ -144,23 +165,57 @@ def keep_chimeric_reads(bamfile, virus_contig):
     return chimeric_file
 
 def get_virus_coordinates(read, in_handle, virus_contig):
-    chrom == in_handle.getrname(read.tid)
+    chrom = in_handle.getrname(read.tid)
     if chrom == virus_contig:
-        return [chrom, pos]
-    SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm = get_SA_items(read)
+        return [chrom, read.pos, read.pos + read.reference_length]
+    SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm, cigar = get_SA_items(read)
     if SA_chrom == virus_contig:
-        return [SA_chrom, SA_pos]
+        return [SA_chrom, SA_pos, SA_end]
 
 def get_human_coordinates(read, in_handle, virus_contig):
-    chrom == in_handle.getrname(read.tid)
+    chrom = in_handle.getrname(read.tid)
     if chrom != virus_contig:
-        return [chrom, pos]
-    SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm = get_SA_items(read)
+        return [chrom, read.pos, read.pos + read.reference_length]
+    SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm, cigar = get_SA_items(read)
     if SA_chrom != virus_contig:
-        return [SA_chrom, SA_pos]
+        return [SA_chrom, SA_pos, SA_end]
+
+def get_human_cigar(read, in_handle, virus_contig):
+    chrom = in_handle.getrname(read.tid)
+    if chrom != virus_contig:
+        return read.cigar
+    SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm, SA_cigar = get_SA_items(read)
+    if SA_chrom != virus_contig:
+        return get_SA_cigar(read)
+
+def get_clipped_end(read, in_handle, virus_contig):
+    cigar = get_human_cigar(read, in_handle, virus_contig)
+    first = 0
+    last = 0
+    if cigar[0][0] == 4 or cigar[0][0] == 5:
+        first = cigar[0][1]
+    if cigar[-1][0] == 4 or cigar[-1][0] == 5:
+        last = cigar[-1][1]
+    if first > last:
+        return "left"
+    elif last > first:
+        return "right"
+    else:
+        return "unknown"
+
+def get_integration_position(read, in_handle, virus_contig):
+    clipped_end = get_clipped_end(read, in_handle, virus_contig)
+    coords = get_human_coordinates(read, in_handle, virus_contig)
+    if clipped_end == "left":
+        return coords[1]
+    elif clipped_end == "right":
+        return coords[2]
+    else:
+        return None
 
 if __name__ == "__main__":
     parser = ArgumentParser()
+    parser.add_argument("--name", default=None, help="Short name of sample.")
     parser.add_argument("--reassign-from", default=None, help="")
     parser.add_argument("--reassign-to", default=None, help="")
     parser.add_argument("--human-bed", help="BED file of human features")
@@ -172,10 +227,16 @@ if __name__ == "__main__":
                      "SA_chrom", "SA_pos", "SA_end", "SA_strand",
                      "SA_mapq", "SA_nm",
                      "as", "xs", "clipped", "insertions", "deletions",
-                     "matched", "clipped_front"]
+                     "matched", "clipped_front", "human_chrom", "human_pos",
+                     "human_end", "virus_chrom", "virus_pos", "virus_end",
+                     "integration"]
     FORMAT = ("{rid}\t{first}\t{chrom}\t{pos}\t{end}\t{strand}\t{mapq}\t{SA_chrom}\t"
               "{SA_pos}\t{SA_end}\t{SA_strand}\t{SA_mapq}\t{SA_nm}\t{AS}\t{XS}\t{clipped}\t"
-              "{insertions}\t{deletions}\t{matched}\t{clipped_front}")
+              "{insertions}\t{deletions}\t{matched}\t{clipped_front}\t{human_chrom}\t"
+              "{human_pos}\t{human_end}\t{virus_chrom}\t{virus_pos}\t{virus_end}\t"
+              "{integration}")
+    OUT_BED = ("{human_chrom}\t{integration}\t{integration_end}\t{rid}\t{name}\t"
+               "{virus_pos}\t{orientation}")
 
     chimeric_file = keep_chimeric_reads(args.bamfile, args.virus_contig)
 
@@ -191,10 +252,12 @@ if __name__ == "__main__":
         human_feature = make_genomic_feature_function(args.human_bed)
 
     HEADER = "\t".join(HEADER_FIELDS)
+    name = args.name if args.name else os.path.splitext(chimeric_file)[0]
 
     with pysam.Samfile(chimeric_file, "rb") as in_handle:
         contig = in_handle.gettid(args.virus_contig)
-        print HEADER
+#        print HEADER
+
         for read in in_handle:
             chrom = in_handle.getrname(read.tid)
             rid = read.qname
@@ -205,15 +268,21 @@ if __name__ == "__main__":
             AS = get_tag(read, "AS")
             XS = get_tag(read, "XS")
             mapq = read.mapq
-            SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm = get_SA_items(read)
+            virus_chrom, virus_pos, virus_end = get_virus_coordinates(read, in_handle, args.virus_contig)
+            human_chrom, human_pos, human_end = get_human_coordinates(read, in_handle, args.virus_contig)
+            SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm, SA_cigar = get_SA_items(read)
             cigar = parse_cigar_tuples(read.cigar)
             clipped = cigar["clipped"]
             insertions = cigar["insertions"]
             deletions = cigar["deletions"]
             matched = cigar["matched"]
             clipped_front = cigar["clipped_front"]
+            integration = get_integration_position(read, in_handle, args.virus_contig)
+	    integration_end = integration + 1
+            orientation = get_clipped_end(read, in_handle, args.virus_contig)
             if args.virus_bed:
                 virus_feature = hiv_feature(*get_virus_coordinates(read, in_handle, args.virus_contig))
             if args.human_bed:
                 symbol, feature = human_feature(*get_human_coordinates(read, in_handle, args.virus_contig))
-            print FORMAT.format(**locals())
+            print OUT_BED.format(**locals())
+#            print FORMAT.format(**locals())
