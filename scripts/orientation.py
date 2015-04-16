@@ -15,10 +15,12 @@ def get_virus_end(read):
     cigar = read.cigartuples
     first = 0
     last = 0
+    if not cigar:
+        return "unknown"
     if cigar[0][0] == 4 or cigar[0][0] == 5:
-        first = cigar[0][1]
+        first = int(cigar[0][1])
     if cigar[-1][0] == 4 or cigar[-1][0] == 5:
-        last = cigar[-1][1]
+        last = int(cigar[-1][1])
     if first > last:
         return "R"
     elif last > first:
@@ -30,9 +32,11 @@ def get_insertion_end(cigar):
     first = 0
     last = 0
     if cigar[0][0] == 4 or cigar[0][0] == 5:
-        first = cigar[0][1]
+        first = int(cigar[0][1])
     if cigar[-1][0] == 4 or cigar[-1][0] == 5:
-        last = cigar[-1][1]
+        last = int(cigar[-1][1])
+    if (first > 20) and (last > 20):
+        return "unknown"
     if first > last:
         return "L"
     elif last > first:
@@ -46,10 +50,14 @@ def get_virus_code(read):
     strand = "-" if read.is_reverse else "+"
     return read_direction + virus_end + strand
 
+def get_integration_code(read, insertion_end, strand):
+    read_direction = "For" if read.is_read1 else "Rev"
+    return read_direction + insertion_end + strand
+
 def call_orientation(virus_code):
-    if virus_code in ["ForR+", "RevR-", "ForL-", "RevL+", "RevR+", "ForR-"]:
+    if virus_code in ["ForR+", "RevR-", "RevR+", "ForR-"]:
         return "5prime"
-    elif virus_code in ["ForL+", "RevL-"]:
+    elif virus_code in ["RevL-", "ForL-", "RevL+", "ForL+"]:
         return "3prime"
     else:
         return "unknown"
@@ -70,6 +78,8 @@ def count_tuple(tp):
 def get_SA_items(read):
     SA = [x for x in read.tags if x[0] == 'SA']
     SA = SA[0] if SA else None
+    if not SA:
+        return None, None, None, None, None, None, None
     items = SA[1].split(",")
     chrom = items[0]
     pos = int(items[1]) - 1
@@ -106,12 +116,14 @@ if __name__ == "__main__":
     parser.add_argument("virus_contig", help="Name of contig of virus.")
     args = parser.parse_args()
 
-    print "read_name chrom pos strand orientation insertion_end mapq seq"
+    print "read_name chrom pos strand orientation insertion_end mapq virus_pos seq code seqcode"
 
     with pysam.Samfile(args.bamfile, "rb") as in_handle:
         count = 0
         for read in in_handle:
             chrom = in_handle.getrname(read.tid)
+	    if read.is_duplicate:
+		continue
             if chrom != args.virus_contig:
                 continue
             code = get_virus_code(read)
@@ -119,7 +131,20 @@ if __name__ == "__main__":
             SA_chrom, SA_pos, SA_end, SA_strand, SA_mapq, SA_nm, SA_cigar = get_SA_items(read)
             if SA_chrom == args.virus_contig:
                 continue
+            if not SA_chrom:
+                continue
             SA_cigar_tuples = get_SA_cigar(read)
             insertion_end = get_insertion_end(SA_cigar_tuples)
+            virus_end = get_virus_end(read)
+            if insertion_end == "unknown" or virus_end == "unknown":
+                continue
             insertion_pos = SA_pos if insertion_end == "L" else SA_end
-            print read.qname, SA_chrom, insertion_pos, SA_strand, orientation, insertion_end, SA_mapq, read.seq
+            end_pos = SA_pos if insertion_end == "R" else SA_end
+            icode = get_integration_code(read, insertion_end, SA_strand)
+            iorientation = call_orientation(icode)
+            if virus_end == "L":
+                seqcode = "{orientation}(HIV)-{insertion_pos}-{iorientation}(human)".format(**locals())
+            else:
+                seqcode = "{iorientation}(human)-{insertion_pos}-{orientation}(HIV)".format(**locals())
+
+            print read.qname, SA_chrom, insertion_pos, SA_strand, orientation, insertion_end, SA_mapq, read.pos, read.seq, code, seqcode
