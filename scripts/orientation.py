@@ -116,7 +116,7 @@ if __name__ == "__main__":
     parser.add_argument("virus_contig", help="Name of contig of virus.")
     args = parser.parse_args()
 
-    print "read_name chrom pos strand orientation insertion_end mapq virus_pos seq code seqcode"
+    print "read_name chrom pos strand orientation insertion_end mapq virus_pos virus_end seq code seqcode"
 
     with pysam.Samfile(args.bamfile, "rb") as in_handle:
         count = 0
@@ -147,4 +147,4 @@ if __name__ == "__main__":
             else:
                 seqcode = "{iorientation}(human)-{insertion_pos}-{orientation}(HIV)".format(**locals())
 
-            print read.qname, SA_chrom, insertion_pos, SA_strand, orientation, insertion_end, SA_mapq, read.pos, read.seq, code, seqcode
+            print read.qname, SA_chrom, insertion_pos, SA_strand, orientation, insertion_end, SA_mapq, read.pos, read.aend, read.seq, code, seqcode
