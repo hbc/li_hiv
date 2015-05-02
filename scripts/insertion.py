@@ -98,11 +98,11 @@ def parse_cigar_tuples(tuples):
             d["other"] += t[1]
     return d
 
-def skip_read(read, contig, virus_contig, in_handle):
+def skip_read(read, contig, virus_contig, in_handle, skip_secondary=True):
     skip = False
     if read.is_secondary:
         skip = True
-    elif is_supplementary(read):
+    elif is_supplementary(read) and skip_secondary:
         skip = True
     elif not has_supplementary(read):
         skip = True
@@ -150,6 +150,20 @@ def make_genomic_feature_function(bed_file):
         return [",".join(features), ",".join(symbols)]
     return overlap_fn
 
+def igv_reads(bamfile, virus_contig):
+    igv_chimeric_file = os.path.splitext(args.bamfile)[0] + ".chimeric.igv.bam"
+    if os.path.exists(igv_chimeric_file):
+        return igv_chimeric_file
+    with pysam.Samfile(args.bamfile, "rb") as in_handle, \
+         pysam.Samfile(igv_chimeric_file, "wb", template=in_handle) as out_handle:
+        contig = in_handle.gettid(args.virus_contig)
+        for read in in_handle:
+            if skip_read(read, contig, args.virus_contig, in_handle, False):
+                continue
+            chrom = in_handle.getrname(read.tid)
+            out_handle.write(read)
+    return igv_chimeric_file
+
 def keep_chimeric_reads(bamfile, virus_contig):
     chimeric_file = os.path.splitext(args.bamfile)[0] + ".chimeric.bam"
     if os.path.exists(chimeric_file):
@@ -158,7 +172,7 @@ def keep_chimeric_reads(bamfile, virus_contig):
          pysam.Samfile(chimeric_file, "wb", template=in_handle) as out_handle:
         contig = in_handle.gettid(args.virus_contig)
         for read in in_handle:
-            if skip_read(read, contig, args.virus_contig, in_handle):
+            if skip_read(read, contig, args.virus_contig, in_handle, True):
                 continue
             chrom = in_handle.getrname(read.tid)
             out_handle.write(read)
@@ -239,6 +253,7 @@ if __name__ == "__main__":
                "{virus_pos}\t{orientation}")
 
     chimeric_file = keep_chimeric_reads(args.bamfile, args.virus_contig)
+    igv_file = igv_reads(args.bamfile, args.virus_contig)
 
     if args.virus_bed:
         FORMAT += "\t{virus_feature}"
