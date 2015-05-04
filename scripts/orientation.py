@@ -110,6 +110,14 @@ def convert_cigar_char(char):
     else:
         return CIGAR_OTHER
 
+def get_duplicates(bam_file):
+    s = set()
+    with pysam.Samfile(bam_file, "rb") as in_handle:
+        for read in in_handle:
+            if read.is_duplicate:
+                s.update([read.qname])
+    return s
+
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("bamfile", help="BAM file of chimeric reads")
@@ -118,13 +126,17 @@ if __name__ == "__main__":
 
     print "read_name chrom pos strand orientation insertion_end mapq virus_pos virus_end seq code seqcode"
 
+    duplicates = get_duplicates(args.bamfile)
+
     with pysam.Samfile(args.bamfile, "rb") as in_handle:
         count = 0
         for read in in_handle:
             chrom = in_handle.getrname(read.tid)
-	    if read.is_duplicate:
-		continue
+            if read.is_duplicate:
+                continue
             if chrom != args.virus_contig:
+                continue
+            if read.qname in duplicates:
                 continue
             code = get_virus_code(read)
             orientation =  call_orientation(code)
@@ -146,5 +158,4 @@ if __name__ == "__main__":
                 seqcode = "{orientation}(HIV)-{insertion_pos}-{iorientation}(human)".format(**locals())
             else:
                 seqcode = "{iorientation}(human)-{insertion_pos}-{orientation}(HIV)".format(**locals())
-
             print read.qname, SA_chrom, insertion_pos, SA_strand, orientation, insertion_end, SA_mapq, read.pos, read.aend, read.seq, code, seqcode
