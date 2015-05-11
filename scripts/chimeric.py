@@ -24,9 +24,9 @@ def supplementary_contig(read):
 
 def is_chimera(read, chrom, virus_contig):
     schrom = supplementary_contig(read)
-    if (read.rname == chrom) & (schrom != virus_contig):
+    if (chrom == virus_contig) & (schrom != virus_contig):
         return True
-    elif (read.rname != chrom) & (schrom == virus_contig):
+    elif (chrom != virus_contig) & (schrom == virus_contig):
         return True
     else:
         return False
@@ -38,7 +38,7 @@ def is_chimeric_read(read, chrom, virus_contig):
     is_supplementary_virus = is_supplementary(read) and chrom == virus_contig
     return is_supplementary_virus or is_chimera(read, chrom, virus_contig)
 
-def chimeric_reads(bamfile, virus_contig):
+def chimeric_reads(bamfile, virus_contig, duplicates):
     igv_chimeric_file = os.path.splitext(args.bamfile)[0] + ".chimeric.igv.bam"
     if os.path.exists(igv_chimeric_file):
         return igv_chimeric_file
@@ -51,12 +51,23 @@ def chimeric_reads(bamfile, virus_contig):
                 continue
             if not is_chimeric_read(read, chrom, virus_contig):
                 continue
+            if read.qname in duplicates:
+                pass
             out_handle.write(read)
     return igv_chimeric_file
+
+def get_duplicates(bam_file):
+    s = set()
+    with pysam.Samfile(bam_file, "rb") as in_handle:
+        for read in in_handle:
+            if read.is_duplicate:
+                s.update([read.qname])
+    return s
 
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument("virus_contig", help="Name of virus contig")
     parser.add_argument("bamfile", help="BAM file")
     args = parser.parse_args()
-    chimeric_reads(args.bamfile, args.virus_contig)
+    duplicates = get_duplicates(args.bamfile)
+    chimeric_reads(args.bamfile, args.virus_contig, duplicates)
