@@ -52,7 +52,7 @@ def chimeric_reads(bamfile, virus_contig, duplicates):
             if not is_chimeric_read(read, chrom, virus_contig):
                 continue
             if read.qname in duplicates:
-                pass
+                continue
             out_handle.write(read)
     return igv_chimeric_file
 
