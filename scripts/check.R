@@ -1,14 +1,16 @@
 library(dplyr)
 library(readr)
-
-in_fn = "out.table"
+args = commandArgs(trailingOnly = TRUE)
+in_fn = args[1]
+out_fn = args[2]
 
 t = read_delim(in_fn, delim=" ")
 
-x = t %>% filter(mapq > 20) %>% group_by(chrom, pos, orientation, insertion_end) %>% summarise(count=n())
-
-write.table(x, file="ACH2-clone3-sites.txt", row.names=FALSE, quote=FALSE, col.names=TRUE,
+x = t %>% filter(mapq > 20) %>%
+    group_by(read_name, chrom, pos, orientation, insertion_end, seqcode) %>% distinct() %>%
+    group_by(read_name) %>% mutate(read_count=n()) %>% filter(read_count == 1) %>%
+    group_by(chrom, pos, orientation, insertion_end, seqcode) %>% summarise(count=n())          
+x = x[, c("chrom", "pos", "pos", "orientation", "insertion_end", "seqcode", "count")]
+    
+write.table(x, file=out_fn, row.names=FALSE, quote=FALSE, col.names=FALSE,
             sep="\t")
-
-dim(t)
-length(unique(t$read_name))
