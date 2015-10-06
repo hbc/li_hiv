@@ -293,7 +293,9 @@ if __name__ == "__main__":
             matched = cigar["matched"]
             clipped_front = cigar["clipped_front"]
             integration = get_integration_position(read, in_handle, args.virus_contig)
-	    integration_end = integration + 1
+            if not integration:
+                continue
+	        integration_end = integration + 1
             orientation = get_clipped_end(read, in_handle, args.virus_contig)
             if args.virus_bed:
                 virus_feature = hiv_feature(*get_virus_coordinates(read, in_handle, args.virus_contig))
