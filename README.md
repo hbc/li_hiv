@@ -37,3 +37,6 @@ has a supplementary alignment associated with it and one of the alignments
 is in the virus sequence and the other is in the human sequence.
 
 `python chimeric.py bwa-mem/$samplename.bam K03455`
+
+## calculate integration and orientation of integrations
+python  ~/cache/li_hiv/scripts/orientation.py bam_file virus_contig > out.sites
