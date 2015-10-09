@@ -39,4 +39,7 @@ is in the virus sequence and the other is in the human sequence.
 `python chimeric.py bwa-mem/$samplename.bam K03455`
 
 ## calculate integration and orientation of integrations
-python  ~/cache/li_hiv/scripts/orientation.py bam_file virus_contig > out.sites
+python orientation.py bam_file virus_contig > out.sites
+
+## combine sites and predict orientations
+Rscript combine.R out.sites out.combined.sites
