@@ -21,7 +21,7 @@ and then index that augmented genome with bwa.
 Samples must be demultiplexed. Once they are demultiplexed, align to
 the augmented human genome with bwa.
 
-`bwa mem -t $THREADS $GENOME ${sample}_R1_001.fastq.gz ${sample}_R2_001.fastq.gz`
+`bwa mem -Y -t $THREADS $GENOME ${sample}_R1_001.fastq.gz ${sample}_R2_001.fastq.gz`
 
 ## mark duplicates
 mark duplicates with sambamba
