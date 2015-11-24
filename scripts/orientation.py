@@ -10,6 +10,8 @@ import pysam
 import toolz as tz
 import re
 
+CIGAR_SOFT_CLIP = 4
+CIGAR_HARD_CLIP = 5
 
 def get_virus_end(read):
     cigar = read.cigartuples
@@ -17,10 +19,13 @@ def get_virus_end(read):
     last = 0
     if not cigar:
         return "unknown"
-    if cigar[0][0] == 4 or cigar[0][0] == 5:
+    if cigar[0][0] == CIGAR_SOFT_CLIP or cigar[0][0] == CIGAR_HARD_CLIP:
         first = int(cigar[0][1])
-    if cigar[-1][0] == 4 or cigar[-1][0] == 5:
+    if cigar[-1][0] == CIGAR_SOFT_CLIP or cigar[-1][0] == CIGAR_HARD_CLIP:
         last = int(cigar[-1][1])
+    # if both ends are clipped > 20 bases, skip this alignment
+    if (first > 20) and (last > 20):
+        return "unknown"
     if first > last:
         return "R"
     elif last > first:
@@ -31,10 +36,11 @@ def get_virus_end(read):
 def get_insertion_end(cigar):
     first = 0
     last = 0
-    if cigar[0][0] == 4 or cigar[0][0] == 5:
+    if cigar[0][0] == CIGAR_SOFT_CLIP or cigar[0][0] == CIGAR_HARD_CLIP:
         first = int(cigar[0][1])
-    if cigar[-1][0] == 4 or cigar[-1][0] == 5:
+    if cigar[-1][0] == CIGAR_SOFT_CLIP or cigar[-1][0] == CIGAR_HARD_CLIP:
         last = int(cigar[-1][1])
+    # if both ends are clipped > 20 bases, skip this alignment
     if (first > 20) and (last > 20):
         return "unknown"
     if first > last:
