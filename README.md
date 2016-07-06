@@ -36,7 +36,7 @@ is marked as supplementary and is in the virus sequence and 2) if the alignment
 has a supplementary alignment associated with it and one of the alignments
 is in the virus sequence and the other is in the human sequence.
 
-`python chimeric.py bwa-mem/$samplename.bam K03455`
+`python chimeric.py K03455 bwa-mem/$samplename.bam`
 
 ## calculate integration and orientation of integrations
 python orientation.py bam_file virus_contig > out.sites
