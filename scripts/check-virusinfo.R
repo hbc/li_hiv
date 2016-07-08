@@ -10,9 +10,10 @@ left = subset(t, orientation == "5prime")
 right = subset(t, orientation == "3prime")
 
 left = left %>% filter(mapq > 20) %>%
-  group_by(read_name, chrom, pos, orientation, insertion_end, seqcode, virus_pos) %>%
+  group_by(read_name, chrom, pos, orientation, insertion_end, seqcode, virus_pos,
+           mapq) %>%
   distinct() %>%
-  group_by(read_name) %>% mutate(read_count=n()) %>% filter(mapq == max(mapq)) %>% 
+  group_by(read_name) %>% mutate(read_count=n()) %>% filter(mapq == max(mapq)) %>%
   mutate(nmult=n()) %>%
   group_by(chrom, pos, orientation, insertion_end, seqcode, virus_pos) %>%
   summarise(count=n(), amult=mean(nmult))
@@ -22,7 +23,8 @@ colnames(left) = c("chrom", "start", "end", "orientation", "insertion_end", "seq
                    "count", "virus_pos", "amult")
 
 right = right %>% filter(mapq > 20) %>%
-  group_by(read_name, chrom, pos, orientation, insertion_end, seqcode, virus_end) %>%
+  group_by(read_name, chrom, pos, orientation, insertion_end, seqcode, virus_end,
+           mapq) %>%
   distinct() %>%
   group_by(read_name) %>% mutate(read_count=n()) %>% filter(mapq == max(mapq)) %>%
   mutate(nmult=n()) %>%
@@ -32,7 +34,10 @@ right = right[, c("chrom", "pos", "pos", "orientation", "insertion_end",
                   "seqcode", "count", "virus_end", "amult")]
 colnames(right) = c("chrom", "start", "end", "orientation", "insertion_end",
                     "seqcode", "count", "virus_pos", "amult")
-
-all = rbind(left, right)
+if(nrow(right) > 0) {
+  all = rbind(left, right)
+} else {
+  all = left
+}
 write.table(all, file=out_fn, row.names=FALSE, quote=FALSE, col.names=FALSE,
             sep="\t")
